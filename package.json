@@ -1,0 +1,16 @@
+{
+  "name": "persistent-counter-worker",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "ioredis": "^5.7.0"
+  }
+}
