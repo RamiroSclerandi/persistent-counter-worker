@@ -1,7 +1,7 @@
 const Redis = require("ioredis");
 const axios = require("axios");
 
-// Environment variables configuration
+// Environment variables for Redis connection and reset endpoint
 const {
   REDIS_HOST,
   REDIS_PORT,
@@ -12,34 +12,45 @@ const {
 } = process.env;
 
 // Redis client configuration
-const redis = new Redis({
+const sub = new Redis({
   host: REDIS_HOST,
   port: REDIS_PORT,
   password: REDIS_PASSWORD,
 });
 
-// Enable keyspace notifications for expired events
-async function enableKeyspaceNotifications() {
-  await redis.config("SET", "notify-keyspace-events", "Ex");
-  console.log("Keyspace notifications enabled.");
-}
+// Pattern to listen for expiration events across all databases
+const EXPIRED_PATTERN = "__keyevent@*__:expired";
+const EXPIRED_CHANNEL_PREFIX = "__keyevent@";
+
+/* MAIN FUNCTION */
 
 async function main() {
-  await enableKeyspaceNotifications();
+  console.log("Connecting to Redis and setting up listener...");
 
-  // Worker that listens for expirations
-  const sub = new Redis({
-    host: REDIS_HOST,
-    port: REDIS_PORT,
-    password: REDIS_PASSWORD,
+  // Event that triggers when the Redis client connects
+  sub.on("connect", async () => {
+    console.log("Redis client connected.");
+    try {
+      // Enable keyspace notifications for expiration events ('Ex' notifies about expired keys)
+      await sub.config("SET", "notify-keyspace-events", "Ex");
+      console.log("Keyspace notifications enabled for 'Ex' events.");
+
+      // Subscribe to the expiration event pattern
+      await sub.psubscribe(EXPIRED_PATTERN);
+      console.log(`Worker subscribed to pattern: ${EXPIRED_PATTERN}`);
+      console.log("Worker is now listening for Redis expirations...");
+    } catch (err) {
+      console.error("Failed to set up Redis subscription:", err.message);
+    }
   });
 
-  const EXPIRED_PATTERN = "__keyevent@*__:expired";
-  await sub.psubscribe(EXPIRED_PATTERN);
+  // Event that triggers when a message matching the pattern is received
+  sub.on("pmessage", async (pattern, channel, message) => {
+    console.log(`Received message: "${message}" from channel: "${channel}" on pattern: "${pattern}"`);
 
-  sub.on("pmessage", async (channel, message) => {
-    if (channel === "__keyevent@0__:expired" && message === COUNTER_KEY) {
-      console.log("Counter expired, triggering backend reset...");
+    // Check if the event is an expiration and if the key is the one we're interested in
+    if (channel.startsWith(EXPIRED_CHANNEL_PREFIX) && message === COUNTER_KEY) {
+      console.log("Counter key expired, triggering backend reset...");
 
       try {
         await axios.post(
@@ -49,14 +60,24 @@ async function main() {
             headers: { "x-secret": RESET_SECRET },
           }
         );
-        console.log("Reset called successfully!");
+        console.log("Reset endpoint called successfully!");
       } catch (err) {
-        console.error("Reset failed:", err.message);
+        // Detailed error handling for the API call
+        if (err.response) {
+          console.error(`Reset failed with status ${err.response.status}:`, err.response.data);
+        } else if (err.request) {
+          console.error("Reset failed: No response received from the server.", err.message);
+        } else {
+          console.error("Reset failed with error:", err.message);
+        }
       }
     }
   });
 
-  console.log("Worker listening for Redis expirations...");
+  // Connection error handling
+  sub.on("error", (err) => {
+    console.error("Redis client error:", err.message);
+  });
 }
 
 main().catch(console.error);
