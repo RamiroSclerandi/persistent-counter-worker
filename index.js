@@ -34,11 +34,11 @@ async function main() {
     password: REDIS_PASSWORD,
   });
 
-  const EXPIRED_CHANNEL = "__keyevent@0__:expired";
-  await sub.subscribe(EXPIRED_CHANNEL);
+  const EXPIRED_PATTERN = "__keyevent@*__:expired";
+  await sub.psubscribe(EXPIRED_PATTERN);
 
-  sub.on("message", async (channel, message) => {
-    if (channel === EXPIRED_CHANNEL && message === COUNTER_KEY) {
+  sub.on("pmessage", async (channel, message) => {
+    if (channel === "__keyevent@0__:expired" && message === COUNTER_KEY) {
       console.log("Counter expired, triggering backend reset...");
 
       try {
