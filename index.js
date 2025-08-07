@@ -8,7 +8,7 @@ const {
   REDIS_PASSWORD,
   RESET_ENDPOINT_URL,
   RESET_SECRET,
-  COUNTER_KEY = "contador_reset"
+  COUNTER_KEY 
 } = process.env;
 
 // Redis client configuration
